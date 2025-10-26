@@ -24,19 +24,16 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm install --include=dev
+        run: npm install
 
-      - name: Install NestJS CLI
-        run: npm install -g @nestjs/cli
-
-      - name: Build application
-        run: nest build
-
-      - name: Upload build artifacts
+      - name: Upload application files
         uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: app-files
+          path: |
+            index.js
+            package.json
+            package-lock.json
           retention-days: 1
 
   deploy:
@@ -45,14 +42,10 @@ jobs:
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
+      - name: Download application files
         uses: actions/download-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: app-files
 
       - name: Setup SSH
         run: |
@@ -68,5 +61,5 @@ jobs:
           AZURE_USER: ${{ secrets.AZURE_USER }}
         run: |
           echo "Deploying to $VM_HOST..."
-          scp -r dist package*.json $AZURE_USER@$VM_HOST:~/
-          ssh $AZURE_USER@$VM_HOST "cd ~/nest-app && npm install --omit=dev && pm2 start dist/main.js --name nest-app --update-env || pm2 restart nest-app"
+          scp -r index.js package*.json $AZURE_USER@$VM_HOST:~/node-app/
+          ssh $AZURE_USER@$VM_HOST "cd ~/node-app && npm install --omit=dev && pm2 start index.js --name node-app --update-env || pm2 restart node-app"
