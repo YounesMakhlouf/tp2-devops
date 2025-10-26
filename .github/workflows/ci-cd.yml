@@ -34,6 +34,7 @@ jobs:
             index.js
             package.json
             package-lock.json
+            prometheus.yml
           retention-days: 1
 
   deploy:
@@ -58,11 +59,17 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           VM_HOST: ${{ secrets.VM_HOST }}
 
+      - name: Configure Prometheus
+        run: |
+          sed "s/\$VM_URL/$VM_URL/g" prometheus.yml > prometheus.configured.yml
+        env:
+          VM_URL: ${{ secrets.VM_URL }}
+
       - name: Deploy to VM
         env:
           VM_HOST: ${{ secrets.VM_HOST }}
           AZURE_USER: ${{ secrets.AZURE_USER }}
         run: |
           echo "Deploying to $VM_HOST..."
-          scp -r index.js package*.json $AZURE_USER@$VM_HOST:~/node-app/
+          scp -r index.js package*.json prometheus.configured.yml $AZURE_USER@$VM_HOST:~/node-app/
           ssh $AZURE_USER@$VM_HOST "cd ~/node-app && npm install --omit=dev && pm2 start index.js --name node-app --update-env || pm2 restart node-app"
