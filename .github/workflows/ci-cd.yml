@@ -59,11 +59,47 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           VM_HOST: ${{ secrets.VM_HOST }}
 
-      - name: Configure Prometheus
-        run: |
-          sed "s/\$VM_URL/$VM_URL/g" prometheus.yml > prometheus.configured.yml
+      - name: Install Node Exporter on VM
         env:
-          VM_URL: ${{ secrets.VM_URL }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+          AZURE_USER: ${{ secrets.AZURE_USER }}
+        run: |
+          echo "Installing Node Exporter on $VM_HOST..."
+          ssh $AZURE_USER@$VM_HOST << 'ENDSSH'
+            # Check if Node Exporter is already installed
+            if ! command -v node_exporter &> /dev/null; then
+              echo "Installing Node Exporter..."
+              cd /tmp
+              wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+              tar xvfz node_exporter-1.7.0.linux-amd64.tar.gz
+              sudo mv node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+              rm -rf node_exporter-1.7.0.linux-amd64*
+
+              # Create systemd service
+              sudo tee /etc/systemd/system/node_exporter.service > /dev/null << 'EOF'
+          [Unit]
+          Description=Node Exporter
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=nobody
+          ExecStart=/usr/local/bin/node_exporter
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+              sudo systemctl daemon-reload
+              sudo systemctl enable node_exporter
+              sudo systemctl start node_exporter
+              echo "Node Exporter installed and started"
+            else
+              echo "Node Exporter already installed, ensuring it's running..."
+              sudo systemctl restart node_exporter
+            fi
+          ENDSSH
 
       - name: Deploy to VM
         env:
@@ -71,5 +107,5 @@ jobs:
           AZURE_USER: ${{ secrets.AZURE_USER }}
         run: |
           echo "Deploying to $VM_HOST..."
-          scp -r index.js package*.json prometheus.configured.yml $AZURE_USER@$VM_HOST:~/node-app/
+          scp -r index.js package*.json $AZURE_USER@$VM_HOST:~/node-app/
           ssh $AZURE_USER@$VM_HOST "cd ~/node-app && npm install --omit=dev && pm2 start index.js --name node-app --update-env || pm2 restart node-app"

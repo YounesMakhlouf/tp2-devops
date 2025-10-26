@@ -4,4 +4,4 @@ global:
 scrape_configs:
   - job_name: "node"
     static_configs:
-      - targets: ["$VM_URL:9100"]
+      - targets: ["4.231.36.68:9100"]
